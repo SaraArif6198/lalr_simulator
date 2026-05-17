@@ -1,0 +1,1382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LALR(1) Compiler Defense | Sara Arif 003</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f0f4ff;
+  --panel: #ffffff;
+  --panel2: #f8faff;
+  --border: #e2e8f0;
+  --text: #1e293b;
+  --muted: #64748b;
+  --accent: #3b82f6;
+  --green: #10b981;
+  --orange: #f59e0b;
+  --red: #ef4444;
+  --purple: #8b5cf6;
+  --yellow: #fbbf24;
+  --code-bg: #1e1e2e;
+  --code-text: #cdd6f4;
+  --hl-line: rgba(251,191,36,0.18);
+  --hl-border: #fbbf24;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Nunito',sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column;}
+
+/* TOP BAR */
+.topbar{background:var(--panel);border-bottom:2px solid var(--border);padding:8px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;}
+.topbar-left{display:flex;align-items:center;gap:10px;}
+.teacher-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--purple));display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;}
+.lesson-title{font-size:14px;font-weight:800;color:var(--text);}
+.lesson-sub{font-size:11px;color:var(--muted);font-weight:600;}
+.chapter-tabs{display:flex;gap:3px;}
+.chapter-tab{padding:5px 11px;border-radius:20px;font-size:11px;font-weight:700;cursor:pointer;border:2px solid transparent;transition:all .2s;color:var(--muted);white-space:nowrap;}
+.chapter-tab.active{background:var(--accent);color:white;}
+.chapter-tab:hover:not(.active){border-color:var(--accent);color:var(--accent);}
+
+/* MAIN */
+.main{display:grid;grid-template-columns:1fr 420px;gap:0;flex:1;overflow:hidden;}
+
+/* LEFT */
+.lesson-panel{overflow-y:auto;padding:18px 22px;display:none;flex-direction:column;gap:0;}
+.lesson-panel.active{display:flex;}
+
+/* RIGHT CODE PANEL */
+.code-panel{background:var(--code-bg);border-left:2px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0;}
+.code-panel-header{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.08);font-family:'JetBrains Mono',monospace;font-size:11px;color:#6c7086;display:flex;align-items:center;gap:6px;flex-shrink:0;}
+.dot-red{width:10px;height:10px;border-radius:50%;background:#ff5f56;}
+.dot-yellow{width:10px;height:10px;border-radius:50%;background:#ffbd2e;}
+.dot-green{width:10px;height:10px;border-radius:50%;background:#27c93f;}
+.code-scroll{overflow-y:auto;flex:1;padding:6px 0;}
+.code-line{display:flex;align-items:flex-start;padding:2px 14px;font-family:'JetBrains Mono',monospace;font-size:11.5px;line-height:1.65;transition:all .3s;position:relative;}
+.code-line .ln{color:#45475a;width:26px;flex-shrink:0;text-align:right;margin-right:14px;font-size:10px;user-select:none;padding-top:1px;}
+.code-line .code{color:var(--code-text);white-space:pre-wrap;word-break:break-all;}
+.code-line.highlighted{background:var(--hl-line);border-left:3px solid var(--hl-border);padding-left:11px;}
+.code-line.highlighted .ln{color:var(--hl-border);}
+.k{color:#cba6f7;}.fn{color:#89b4fa;}.s{color:#a6e3a1;}.c{color:#585b70;font-style:italic;}.v{color:#89dceb;}.n{color:#fab387;}.p{color:#cdd6f4;}.t{color:#f38ba8;}
+
+/* STEPS */
+.step-slide{display:none;flex-direction:column;gap:14px;animation:fadeUp .3s ease;}
+.step-slide.active{display:flex;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:translateY(0);}}
+
+/* TEACHER BUBBLE */
+.teacher-bubble{background:linear-gradient(135deg,#eff6ff,#f0fdf4);border:2px solid #bfdbfe;border-radius:16px;border-top-left-radius:4px;padding:14px 18px;position:relative;}
+.teacher-bubble::before{content:'👨‍🏫';position:absolute;top:-13px;left:10px;font-size:20px;}
+.teacher-bubble p{font-size:14px;line-height:1.7;color:#1e40af;font-weight:600;margin-top:4px;}
+.teacher-bubble p strong{color:#1d4ed8;background:#dbeafe;padding:1px 5px;border-radius:4px;}
+.teacher-bubble p .warn{color:#92400e;background:#fef3c7;padding:1px 5px;border-radius:4px;}
+.teacher-bubble p .good{color:#065f46;background:#d1fae5;padding:1px 5px;border-radius:4px;}
+
+/* VISUAL BOX */
+.visual-box{background:var(--panel);border:2px solid var(--border);border-radius:14px;padding:16px;}
+.visual-title{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;gap:6px;}
+
+/* VAR TRACK */
+.var-track{display:flex;gap:8px;flex-wrap:wrap;}
+.var-box{background:var(--panel2);border:2px solid var(--border);border-radius:10px;padding:6px 12px;text-align:center;transition:all .3s;min-width:70px;}
+.var-box.changed{border-color:var(--orange);background:#fffbeb;transform:scale(1.05);}
+.var-box .vname{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);margin-bottom:1px;}
+.var-box .vval{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:700;color:var(--text);}
+
+/* STACK VISUAL */
+.stack-visual{display:flex;flex-direction:column-reverse;gap:3px;min-height:50px;border:2px dashed var(--border);border-radius:10px;padding:6px;background:var(--panel2);}
+.stack-item{background:var(--accent);color:white;padding:5px 10px;border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;text-align:center;animation:popIn .3s ease;}
+@keyframes popIn{from{opacity:0;transform:scale(.8);}to{opacity:1;transform:scale(1);}}
+.stack-item.new{background:var(--orange);color:#000;}
+.stack-item.purple{background:var(--purple);}
+.stack-item.green{background:var(--green);}
+
+/* CONDITION CHECK */
+.condition-check{display:flex;flex-direction:column;gap:6px;}
+.cond-row{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px;font-size:12px;font-weight:700;}
+.cond-row.true{background:#f0fdf4;border:1px solid #86efac;color:#166534;}
+.cond-row.false{background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;}
+.cond-row.check{background:#fffbeb;border:1px solid #fde68a;color:#92400e;}
+
+/* INFO ROW */
+.info-row{display:flex;gap:8px;align-items:stretch;}
+.info-item{flex:1;background:var(--panel);border:2px solid var(--border);border-radius:10px;padding:8px 12px;text-align:center;}
+.info-item .i-label{font-size:9px;font-weight:800;text-transform:uppercase;color:var(--muted);letter-spacing:.08em;}
+.info-item .i-val{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:800;color:var(--text);margin-top:1px;}
+.info-item.accent .i-val{color:var(--accent);}
+.info-item.green .i-val{color:var(--green);}
+.info-item.orange .i-val{color:var(--orange);}
+.info-item.purple .i-val{color:var(--purple);}
+.info-item.red .i-val{color:var(--red);}
+
+/* RESULT BOX */
+.result-box{background:#f0fdf4;border:2px solid #86efac;border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:10px;}
+.result-icon{font-size:22px;}
+.result-text{font-size:14px;font-weight:700;color:#166534;}
+.result-val{font-family:'JetBrains Mono',monospace;font-size:18px;font-weight:800;color:#15803d;}
+
+/* SECTION HEADER */
+.section-header{background:linear-gradient(135deg,#1e1e2e,#2a2a3e);color:white;border-radius:14px;padding:16px 20px;display:flex;align-items:center;gap:12px;}
+.section-num{width:38px;height:38px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:900;flex-shrink:0;}
+.section-h{font-size:16px;font-weight:800;}
+.section-sub{font-size:12px;color:#94a3b8;font-weight:600;margin-top:1px;}
+
+/* CH HERO */
+.ch-hero{background:linear-gradient(135deg,#3b82f6,#8b5cf6);border-radius:16px;padding:22px 26px;color:white;display:flex;flex-direction:column;gap:6px;}
+.ch-hero .ch-tag{font-size:10px;font-weight:800;letter-spacing:.15em;opacity:.8;}
+.ch-hero .ch-title{font-size:24px;font-weight:900;}
+.ch-hero .ch-desc{font-size:13px;opacity:.85;font-weight:600;line-height:1.6;}
+
+/* TABLE */
+.data-table{width:100%;border-collapse:collapse;font-family:'JetBrains Mono',monospace;font-size:12px;}
+.data-table th{background:var(--accent);color:white;padding:7px 10px;text-align:left;font-size:10px;letter-spacing:.05em;}
+.data-table td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--muted);}
+.data-table tr.hl td{background:#fffbeb;color:var(--text);font-weight:700;border-left:3px solid var(--orange);}
+.data-table tr.done td{color:var(--green);}
+
+/* TRANS LIST */
+.trans-list{display:flex;flex-direction:column;gap:5px;}
+.trans-item{display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--panel2);border-radius:7px;border:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:12px;}
+.trans-item.new{border-color:var(--orange);background:#fffbeb;}
+.trans-item.eps{border-color:var(--purple);background:#f5f3ff;}
+.trans-item.acc{border-color:var(--green);background:#f0fdf4;}
+.trans-arrow{color:var(--accent);font-weight:700;}
+
+/* CHAR DISPLAY */
+.char-display{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.char-box{width:40px;height:40px;border-radius:9px;border:2px solid var(--border);background:white;display:flex;align-items:center;justify-content:center;font-family:'JetBrains Mono',monospace;font-size:16px;font-weight:700;transition:all .3s;position:relative;}
+.char-box.current{border-color:var(--orange);background:#fffbeb;transform:scale(1.12);box-shadow:0 4px 12px rgba(245,158,11,.3);}
+.char-box.done{border-color:var(--green);background:#f0fdf4;color:var(--green);}
+.char-box.inserted{border-color:var(--purple);background:#f5f3ff;color:var(--purple);}
+.char-idx{position:absolute;top:-9px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:700;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+
+/* STEP NAV */
+.step-nav{display:flex;align-items:center;gap:10px;padding:10px 22px;background:var(--panel);border-top:2px solid var(--border);flex-shrink:0;}
+.step-btn{padding:7px 18px;border-radius:24px;border:2px solid var(--border);background:white;font-family:'Nunito',sans-serif;font-size:12px;font-weight:700;cursor:pointer;transition:all .2s;color:var(--text);}
+.step-btn:hover{border-color:var(--accent);color:var(--accent);}
+.step-btn.primary{background:var(--accent);color:white;border-color:var(--accent);}
+.step-btn.primary:hover{background:#2563eb;}
+.step-indicator{display:flex;gap:5px;align-items:center;flex:1;justify-content:center;}
+.s-dot{width:7px;height:7px;border-radius:50%;background:var(--border);transition:all .25s;cursor:pointer;}
+.s-dot.done{background:var(--green);}
+.s-dot.active{background:var(--accent);width:20px;border-radius:4px;}
+.step-counter{font-size:11px;font-weight:700;color:var(--muted);min-width:60px;text-align:right;font-family:'JetBrains Mono',monospace;}
+
+/* PIPELINE */
+.pipeline-step{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:10px;border:2px solid;}
+.pipeline-arrow{text-align:center;color:#94a3b8;font-size:16px;}
+
+/* LR ITEM */
+.lr-item{font-family:'JetBrains Mono',monospace;font-size:12px;padding:4px 8px;background:var(--panel2);border:1px solid var(--border);border-radius:6px;margin:2px 0;}
+.lr-item .dot{color:var(--orange);font-weight:800;}
+.lr-item .la{color:var(--purple);font-size:10px;}
+
+/* CONFLICT BOX */
+.conflict-box{background:#fef2f2;border:2px solid #fca5a5;border-radius:10px;padding:10px 14px;}
+.conflict-title{font-size:11px;font-weight:800;color:#991b1b;margin-bottom:6px;}
+.conflict-row{display:flex;align-items:center;gap:8px;font-size:12px;color:#7f1d1d;padding:3px 0;}
+
+/* SCROLLBAR */
+::-webkit-scrollbar{width:5px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:3px;}
+
+/* TAC INSTR */
+.tac-instr{font-family:'JetBrains Mono',monospace;font-size:13px;padding:6px 12px;background:#1e1e2e;color:#cdd6f4;border-radius:6px;border-left:3px solid var(--accent);}
+.tac-instr .temp{color:#fab387;}.tac-instr .op{color:#cba6f7;}.tac-instr .var{color:#89dceb;}
+
+/* SYMBOL TABLE */
+.sym-row{display:grid;grid-template-columns:1fr 60px 60px 70px 60px;gap:6px;padding:6px 8px;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:11px;}
+.sym-header{background:var(--accent);color:white;border-radius:6px 6px 0 0;font-weight:700;}
+.sym-row.init{color:var(--green);}
+
+/* STATE NODE */
+.state-node{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;border:2px solid;font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;}
+.state-node.start{border-color:var(--accent);background:#eff6ff;color:#1d4ed8;}
+.state-node.mid{border-color:var(--purple);background:#faf5ff;color:#6d28d9;}
+.state-node.final{border-color:var(--green);background:#f0fdf4;color:#065f46;}
+
+/* PARSE STACK VIS */
+.parse-step-row{display:grid;grid-template-columns:30px 1fr 1fr 80px;gap:6px;padding:5px 8px;border-bottom:1px solid var(--border);font-family:'JetBrains Mono',monospace;font-size:10.5px;align-items:center;}
+.parse-step-row.header{background:var(--purple);color:white;border-radius:6px 6px 0 0;font-weight:700;font-size:10px;}
+.parse-step-row.active{background:#fffbeb;border-left:3px solid var(--orange);}
+.parse-step-row .action-s{color:var(--accent);font-weight:700;}
+.parse-step-row .action-r{color:var(--orange);font-weight:700;}
+.parse-step-row .action-acc{color:var(--green);font-weight:700;}
+
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="teacher-avatar">🎓</div>
+    <div>
+      <div class="lesson-title">LALR(1) Compiler Engine — Visual Defense</div>
+      <div class="lesson-sub">Sara Arif (003) · Tooba Zahra (011) · Abiha Arshad (013)</div>
+    </div>
+  </div>
+  <div class="chapter-tabs">
+    <div class="chapter-tab active" onclick="showChapter(0)">0: Overview</div>
+    <div class="chapter-tab" onclick="showChapter(1)">1: Lexer</div>
+    <div class="chapter-tab" onclick="showChapter(2)">2: Grammar</div>
+    <div class="chapter-tab" onclick="showChapter(3)">3: LALR Automaton</div>
+    <div class="chapter-tab" onclick="showChapter(4)">4: Parse Table</div>
+    <div class="chapter-tab" onclick="showChapter(5)">5: AST & TAC</div>
+  </div>
+</div>
+
+<div class="main">
+
+<!-- ===================== CHAPTER 0: OVERVIEW ===================== -->
+<div class="lesson-panel active" id="chapter-0">
+
+  <div class="step-slide active" id="ch0-step-0">
+    <div class="ch-hero">
+      <div class="ch-tag">CHAPTER 0 — ARCHITECTURE</div>
+      <div class="ch-title">The 4-Phase Compiler Pipeline</div>
+      <div class="ch-desc">Three files. One complete compiler engine. From raw source code to Three-Address Code — every transformation explained step by step.</div>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🗺️ Full System Map</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <div class="pipeline-step" style="border-color:#bfdbfe;background:#eff6ff;">
+          <div style="font-size:20px;">📜</div>
+          <div style="flex:1;"><div style="font-weight:800;font-size:13px;color:#1d4ed8;">Phase 1 — Lexer</div><div style="font-size:11px;color:#3730a3;">runtimeEngine.js → runLexer()</div></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;background:white;padding:3px 8px;border-radius:5px;border:1px solid #bfdbfe;">source → tokens[]</div>
+        </div>
+        <div class="pipeline-arrow">↓</div>
+        <div class="pipeline-step" style="border-color:#c4b5fd;background:#faf5ff;">
+          <div style="font-size:20px;">🔍</div>
+          <div style="flex:1;"><div style="font-weight:800;font-size:13px;color:#6d28d9;">Phase 2 — Grammar Engine</div><div style="font-size:11px;color:#5b21b6;">grammarEngine.js → parseGrammar() + computeNullableFirstFollow()</div></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;background:white;padding:3px 8px;border-radius:5px;border:1px solid #c4b5fd;">CFG → FIRST/FOLLOW</div>
+        </div>
+        <div class="pipeline-arrow">↓</div>
+        <div class="pipeline-step" style="border-color:#fde68a;background:#fffbeb;">
+          <div style="font-size:20px;">⚙️</div>
+          <div style="flex:1;"><div style="font-weight:800;font-size:13px;color:#92400e;">Phase 3 — LALR Engine</div><div style="font-size:11px;color:#78350f;">lalrEngine.js → buildLALRParser()</div></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;background:white;padding:3px 8px;border-radius:5px;border:1px solid #fde68a;">LR(1) → LALR table</div>
+        </div>
+        <div class="pipeline-arrow">↓</div>
+        <div class="pipeline-step" style="border-color:#86efac;background:#f0fdf4;">
+          <div style="font-size:20px;">🌳</div>
+          <div style="flex:1;"><div style="font-weight:800;font-size:13px;color:#166534;">Phase 4 — Runtime</div><div style="font-size:11px;color:#14532d;">runParseSimulator() → analyzeSemantics() → generateTAC()</div></div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:12px;background:white;padding:3px 8px;border-radius:5px;border:1px solid #86efac;">tokens → AST → TAC</div>
+        </div>
+      </div>
+    </div>
+    <div class="teacher-bubble">
+      <p>This entire system is a <strong>mini compiler</strong>. The grammar engine reads rules, computes analysis sets, and the LALR engine builds the actual parsing machine. The runtime engine then runs the parser on real code and generates intermediate representation. Three files — one complete compiler! 🚀</p>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch0-step-1">
+    <div class="section-header">
+      <div class="section-num">🔑</div>
+      <div><div class="section-h">What is an LR(1) Item?</div><div class="section-sub">The atomic unit of the LALR(1) automaton</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>An <strong>LR(1) item</strong> is a grammar production with a <strong>dot (•)</strong> showing how far parsing has progressed, plus a <strong>lookahead token</strong> showing what must follow. Three numbers uniquely identify it: <span class="warn">prodIdx</span>, <span class="warn">dot</span>, <span class="warn">lookahead</span>. Our code stores it as a string: <strong>"prodIdx_dot_lookahead"</strong>.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📐 LR(1) Item Anatomy</div>
+      <div style="background:#1e1e2e;border-radius:10px;padding:14px 18px;font-family:'JetBrains Mono',monospace;font-size:13px;color:#cdd6f4;">
+        <div style="color:#6c7086;margin-bottom:8px;">// Item: "E → E • + T"  with lookahead "$"</div>
+        <div><span style="color:#cba6f7;">prodIdx</span> = <span style="color:#fab387;">2</span>  <span style="color:#585b70;">← which production</span></div>
+        <div style="margin-top:4px;"><span style="color:#cba6f7;">dot</span>     = <span style="color:#fab387;">1</span>  <span style="color:#585b70;">← how many symbols consumed</span></div>
+        <div style="margin-top:4px;"><span style="color:#cba6f7;">lookahead</span>= <span style="color:#a6e3a1;">"$"</span><span style="color:#585b70;"> ← what must follow LHS</span></div>
+        <div style="margin-top:10px;color:#89b4fa;">→ stored as: <span style="color:#a6e3a1;">"2_1_$"</span></div>
+      </div>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🔄 Shift vs Reduce Decision</div>
+      <div class="condition-check">
+        <div class="cond-row check">If dot is BEFORE a symbol → can SHIFT (read next token)</div>
+        <div class="cond-row true">✅ E → E • + T, $ → dot before '+', so SHIFT on '+'</div>
+        <div class="cond-row check">If dot is AT THE END → must REDUCE (fold into non-terminal)</div>
+        <div class="cond-row true">✅ E → E + T •, $ → dot at end, so REDUCE using this rule</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- ch0 -->
+
+<!-- ===================== CHAPTER 1: LEXER ===================== -->
+<div class="lesson-panel" id="chapter-1">
+
+  <div class="step-slide active" id="ch1-step-0">
+    <div class="section-header">
+      <div class="section-num" style="background:var(--green);">1</div>
+      <div><div class="section-h">runLexer() — Code Sanitization</div><div class="section-sub">First thing: strip comments, prepare input</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The lexer is the <strong>security guard</strong> at the factory gate. Before any real work, it strips all <span class="warn">// line comments</span> and <span class="warn">/* block comments */</span> using a regular expression. The input code then becomes a clean character stream ready for tokenization.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🧹 Comment Stripping in Action</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <div style="font-size:10px;font-weight:800;color:var(--red);margin-bottom:6px;text-transform:uppercase;">Raw Input</div>
+          <div style="background:#1e1e2e;border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#cdd6f4;">
+            <div><span style="color:#585b70;">// declare x</span></div>
+            <div>int x;</div>
+            <div><span style="color:#585b70;">/* assign */</span></div>
+            <div>x = 5 + 3;</div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:800;color:var(--green);margin-bottom:6px;text-transform:uppercase;">After Sanitize</div>
+          <div style="background:#1e1e2e;border-radius:8px;padding:10px;font-family:'JetBrains Mono',monospace;font-size:11px;color:#cdd6f4;">
+            <div>&nbsp;</div>
+            <div>int x;</div>
+            <div>&nbsp;</div>
+            <div>x = 5 + 3;</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="condition-check">
+      <div class="cond-row check">📌 Regex: <code style="font-family:'JetBrains Mono',monospace">/\/\*[\s\S]*?\*\/|\/\/.*/g</code></div>
+      <div class="cond-row true">✅ <code>/\*...*\/</code> → block comments removed (non-greedy .*?)</div>
+      <div class="cond-row true">✅ <code>//.*</code> → line comments removed (to end of line)</div>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch1-step-1">
+    <div class="teacher-bubble">
+      <p>Now the lexer checks what the grammar needs. It calls <strong>terminals.includes('id')</strong> and <strong>terminals.includes('num')</strong>. Why? Because if the grammar never mentions 'num', there's no point classifying numbers. This is <span class="good">vocabulary-aware scanning</span> — the lexer adapts to the grammar.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🔑 Token Priority — Longest Match First</div>
+      <div class="teacher-bubble" style="margin-bottom:0;">
+        <p>Operators are sorted by <strong>length descending</strong>. This prevents <span class="warn">==</span> from being tokenized as two separate <span class="warn">=</span> signs. Longest terminal always wins the match.</p>
+      </div>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📋 Pattern Priority Order (top = checked first)</div>
+      <table class="data-table">
+        <thead><tr><th>#</th><th>Pattern</th><th>Matches</th><th>Example</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>whitespace</td><td>spaces, newlines</td><td style="color:var(--muted);">skipped</td></tr>
+          <tr><td>2</td><td>num</td><td>[0-9]+(\.[0-9]+)?</td><td>42, 3.14</td></tr>
+          <tr class="hl"><td>3</td><td>keywords (sorted)</td><td>int, float, while</td><td>int</td></tr>
+          <tr><td>4</td><td>id</td><td>[a-zA-Z_][a-zA-Z0-9_]*</td><td>myVar</td></tr>
+          <tr class="hl"><td>5</td><td>operators (long→short)</td><td>==, !=, +, -, =</td><td>== before =</td></tr>
+          <tr><td>6</td><td>char fallback</td><td>any single char</td><td>;</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch1-step-2">
+    <div class="section-header" style="background:linear-gradient(135deg,#064e3b,#065f46);">
+      <div class="section-num" style="background:var(--green);">→</div>
+      <div><div class="section-h">Token Stream Generation</div><div class="section-sub">Character-by-character scanning loop</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The main <strong>while(cursor &lt; sanitized.length)</strong> loop reads the remaining string from cursor position, tries every pattern in order, and the <strong>first match wins</strong>. Cursor advances by the match length. This is the classic <span class="good">maximal munch</span> scanning algorithm.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📍 Tracing: "int x = 5;"</div>
+      <table class="data-table">
+        <thead><tr><th>cursor</th><th>window</th><th>matched by</th><th>token</th><th>type</th></tr></thead>
+        <tbody>
+          <tr class="done"><td>0</td><td>"int x..."</td><td>keyword</td><td>"int"</td><td style="color:var(--purple);">int</td></tr>
+          <tr class="done"><td>3</td><td>" x = ..."</td><td>whitespace</td><td>" "</td><td style="color:var(--muted);">skip</td></tr>
+          <tr class="done"><td>4</td><td>"x = 5..."</td><td>id</td><td>"x"</td><td style="color:var(--accent);">id</td></tr>
+          <tr class="done"><td>5</td><td>" = 5..."</td><td>whitespace</td><td>" "</td><td style="color:var(--muted);">skip</td></tr>
+          <tr class="hl"><td>6</td><td>"= 5;..."</td><td>operator</td><td>"="</td><td style="color:var(--orange);">=</td></tr>
+          <tr class="done"><td>7</td><td>" 5;..."</td><td>whitespace</td><td>" "</td><td style="color:var(--muted);">skip</td></tr>
+          <tr class="done"><td>8</td><td>"5;..."</td><td>num</td><td>"5"</td><td style="color:var(--green);">num</td></tr>
+          <tr class="done"><td>9</td><td>";..."</td><td>char</td><td>";"</td><td style="color:var(--red);">;</td></tr>
+          <tr class="done"><td>10</td><td>""</td><td>—</td><td>"$"</td><td style="color:var(--yellow);">EOF</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="result-box">
+      <div class="result-icon">✅</div>
+      <div><div class="result-text">Final token array has type, lexeme, line, startIdx, endIdx for each token.</div></div>
+    </div>
+  </div>
+
+</div><!-- ch1 -->
+
+<!-- ===================== CHAPTER 2: GRAMMAR ===================== -->
+<div class="lesson-panel" id="chapter-2">
+
+  <div class="step-slide active" id="ch2-step-0">
+    <div class="section-header">
+      <div class="section-num" style="background:var(--purple);">2</div>
+      <div><div class="section-h">parseGrammar() — Production Splitting</div><div class="section-sub">Converting raw text grammar into structured data</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The grammar arrives as plain text like <strong>"E -&gt; E + T | T"</strong>. The parser splits each line on <strong>"-&gt;"</strong> or <strong>"::="</strong>, extracts the left-hand side, then splits alternatives on <strong>"|"</strong>. Each alternative is further split by whitespace into individual symbols.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🔪 Splitting Process</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;font-family:'JetBrains Mono',monospace;font-size:12px;">
+          <div style="background:#1e1e2e;color:#cdd6f4;padding:6px 10px;border-radius:6px;flex:1;">"E -&gt; E + T | T"</div>
+          <div style="color:var(--muted);">split '-&gt;'</div>
+          <div style="color:var(--orange);">→</div>
+        </div>
+        <div style="display:flex;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;">
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;padding:5px 10px;border-radius:5px;color:#1d4ed8;">lhs: "E"</div>
+          <div style="background:#faf5ff;border:1px solid #c4b5fd;padding:5px 10px;border-radius:5px;color:#6d28d9;">rhs: "E + T | T"</div>
+        </div>
+        <div style="color:var(--muted);font-size:11px;margin-left:4px;">↓ split '|' → two alternatives</div>
+        <div style="display:flex;gap:8px;font-family:'JetBrains Mono',monospace;font-size:11px;">
+          <div style="background:#f0fdf4;border:1px solid #86efac;padding:5px 10px;border-radius:5px;color:#166534;">prod 0: E → [E, +, T]</div>
+          <div style="background:#f0fdf4;border:1px solid #86efac;padding:5px 10px;border-radius:5px;color:#166534;">prod 1: E → [T]</div>
+        </div>
+      </div>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📊 Grammar for E → E+T | T; T → num | id</div>
+      <table class="data-table">
+        <thead><tr><th>Idx</th><th>LHS</th><th>RHS</th><th>originalIdx</th></tr></thead>
+        <tbody>
+          <tr class="done"><td>0</td><td style="color:var(--purple);">E'</td><td>[E]</td><td>0 (augmented)</td></tr>
+          <tr><td>1</td><td>E</td><td>[E, +, T]</td><td>1</td></tr>
+          <tr><td>2</td><td>E</td><td>[T]</td><td>2</td></tr>
+          <tr><td>3</td><td>T</td><td>[num]</td><td>3</td></tr>
+          <tr><td>4</td><td>T</td><td>[id]</td><td>4</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch2-step-1">
+    <div class="teacher-bubble">
+      <p>Grammar <strong>augmentation</strong> is critical for LR parsing. We add a new start symbol <strong>E' → E</strong> (with a prime). This creates a single unambiguous acceptance state. When the parser sees <strong>E' → E •</strong> with lookahead <span class="warn">$</span>, it knows parsing is complete — <span class="good">accept!</span></p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">⭐ Why Augmentation?</div>
+      <div class="condition-check">
+        <div class="cond-row check">Without E': Multiple start states could exist → ambiguous acceptance</div>
+        <div class="cond-row true">✅ With E' → E: Only ONE accept state possible → clean termination</div>
+        <div class="cond-row true">✅ E' gets prodIdx=0 → its reduce action → "acc" (not Rk)</div>
+      </div>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📝 Terminal & Non-Terminal Classification</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <div style="font-size:10px;font-weight:800;color:var(--purple);margin-bottom:6px;">NON-TERMINALS (expandable)</div>
+          <div class="trans-list">
+            <div class="trans-item eps">E' <span style="color:var(--muted);font-size:10px;">(augmented start)</span></div>
+            <div class="trans-item eps">E <span style="color:var(--muted);font-size:10px;">(expression)</span></div>
+            <div class="trans-item eps">T <span style="color:var(--muted);font-size:10px;">(term)</span></div>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:800;color:var(--green);margin-bottom:6px;">TERMINALS (tokens)</div>
+          <div class="trans-list">
+            <div class="trans-item new">+ <span style="color:var(--muted);font-size:10px;">(operator)</span></div>
+            <div class="trans-item new">num <span style="color:var(--muted);font-size:10px;">(number)</span></div>
+            <div class="trans-item new">id <span style="color:var(--muted);font-size:10px;">(identifier)</span></div>
+            <div class="trans-item acc">$ <span style="color:var(--muted);font-size:10px;">(EOF)</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch2-step-2">
+    <div class="section-header" style="background:linear-gradient(135deg,#1a1a2e,#2d1b69);">
+      <div class="section-num" style="background:var(--purple);">∞</div>
+      <div><div class="section-h">Fixed-Point Iteration — The Detectives</div><div class="section-sub">computeNullableFirstFollow() — runs until no more changes</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The algorithm runs a <strong>while(changed)</strong> loop — it keeps iterating until no new information is discovered. This is called a <span class="good">fixed-point algorithm</span>. Three detective sets are computed: <strong>Nullable</strong> (can it vanish?), <strong>FIRST</strong> (what appears first?), <strong>FOLLOW</strong> (what comes after?).</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🔍 FIRST Set — Example Grammar: E→E+T|T; T→num|id</div>
+      <table class="data-table">
+        <thead><tr><th>Symbol</th><th>FIRST Set</th><th>Why?</th></tr></thead>
+        <tbody>
+          <tr><td>num</td><td style="color:var(--accent);">{num}</td><td>terminal is its own FIRST</td></tr>
+          <tr><td>id</td><td style="color:var(--accent);">{id}</td><td>terminal is its own FIRST</td></tr>
+          <tr class="hl"><td>T</td><td style="color:var(--purple);">{num, id}</td><td>T→num and T→id, so both</td></tr>
+          <tr class="hl"><td>E</td><td style="color:var(--green);">{num, id}</td><td>E→T (so FIRST(T)), E→E+T (so FIRST(E) itself)</td></tr>
+          <tr><td>E'</td><td style="color:var(--orange);">{num, id}</td><td>E'→E so FIRST(E)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📡 FOLLOW Set Propagation Rules</div>
+      <div class="condition-check">
+        <div class="cond-row check">Rule 1: FOLLOW(start) always contains $ (EOF marker)</div>
+        <div class="cond-row true">✅ For E→E+T: FOLLOW(E in position 0) gets FIRST(+T) = {+}</div>
+        <div class="cond-row true">✅ For E→E+T: + not nullable, so stop. FOLLOW(T) gets FOLLOW(E) = {$, +} wait...</div>
+        <div class="cond-row check">Rule 2: If β after B is nullable → FOLLOW(B) gets FOLLOW(LHS)</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- ch2 -->
+
+<!-- ===================== CHAPTER 3: LALR AUTOMATON ===================== -->
+<div class="lesson-panel" id="chapter-3">
+
+  <div class="step-slide active" id="ch3-step-0">
+    <div class="section-header">
+      <div class="section-num" style="background:var(--orange);">3</div>
+      <div><div class="section-h">computeClosureLR1() — The Closure Machine</div><div class="section-sub">Expanding items recursively with lookahead propagation</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>Closure is how we <strong>expand</strong> a set of LR(1) items. When the dot is before a non-terminal B, we add <strong>all productions of B</strong> with dot at position 0. The new lookaheads are computed as <strong>FIRST(βa)</strong> — where β is the rest of the right side and a is the original lookahead.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🔄 Closure Expansion — State I₀</div>
+      <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:800;color:var(--muted);margin-bottom:4px;">INITIAL ITEM</div>
+        <div class="lr-item">E' → <span class="dot">•</span> E <span class="la">, $</span></div>
+        <div style="font-size:10px;color:var(--muted);margin:4px 0;">↓ dot before E (non-terminal) → expand E's productions with lookahead FIRST(a) = FIRST($) = {$}</div>
+        <div style="font-size:10px;font-weight:800;color:var(--muted);margin-bottom:4px;">AFTER CLOSURE</div>
+        <div class="lr-item">E' → <span class="dot">•</span> E <span class="la">, $</span></div>
+        <div class="lr-item">E → <span class="dot">•</span> E + T <span class="la">, $</span></div>
+        <div class="lr-item">E → <span class="dot">•</span> E + T <span class="la">, +</span></div>
+        <div class="lr-item">E → <span class="dot">•</span> T <span class="la">, $</span></div>
+        <div class="lr-item">E → <span class="dot">•</span> T <span class="la">, +</span></div>
+        <div class="lr-item">T → <span class="dot">•</span> num <span class="la">, $</span></div>
+        <div class="lr-item">T → <span class="dot">•</span> num <span class="la">, +</span></div>
+        <div class="lr-item">T → <span class="dot">•</span> id <span class="la">, $</span></div>
+        <div class="lr-item">T → <span class="dot">•</span> id <span class="la">, +</span></div>
+      </div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The code uses a <strong>queue (array + head pointer)</strong> — not recursion — to avoid stack overflow. It's a BFS expansion: take item from queue, expand it, add new items back, repeat until queue is exhausted. <span class="good">This is the textbook LR(1) closure algorithm!</span></p>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch3-step-1">
+    <div class="section-header">
+      <div class="section-num" style="background:var(--accent);">→</div>
+      <div><div class="section-h">computeGotoLR1() — The Shift Operation</div><div class="section-sub">Moving the dot one step forward on symbol X</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>GOTO(I, X) finds all items in state I where the <strong>dot is before X</strong>, advances the dot by one, collects these "shifted" items, and calls <strong>closure</strong> on them. The result is the new destination state — the edge in our DFA.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🎯 GOTO(I₀, num) Example</div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Items where dot is before "num"</div>
+          <div class="lr-item">T → <span class="dot">•</span> num <span class="la">, $</span></div>
+          <div class="lr-item">T → <span class="dot">•</span> num <span class="la">, +</span></div>
+        </div>
+        <div style="text-align:center;color:var(--accent);font-size:18px;font-weight:800;">→<br/><span style="font-size:10px;color:var(--muted);">advance dot</span></div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">Shifted items → new state</div>
+          <div class="lr-item">T → num <span class="dot">•</span> <span class="la">, $</span></div>
+          <div class="lr-item">T → num <span class="dot">•</span> <span class="la">, +</span></div>
+        </div>
+      </div>
+      <div style="margin-top:10px;font-size:12px;color:var(--muted);">Then closure() is called on shifted items → no expansion needed (dot at end of terminals)</div>
+    </div>
+    <div class="info-row">
+      <div class="info-item accent"><div class="i-label">LR(1) States Generated</div><div class="i-val">~7</div></div>
+      <div class="info-item purple"><div class="i-label">Transitions</div><div class="i-val">~12</div></div>
+      <div class="info-item"><div class="i-label">Safety Limit</div><div class="i-val">500</div></div>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch3-step-2">
+    <div class="section-header" style="background:linear-gradient(135deg,#1c1917,#292524);">
+      <div class="section-num" style="background:var(--yellow);">⊕</div>
+      <div><div class="section-h">Core Merging — LR(1) → LALR(1)</div><div class="section-sub">Compressing states by merging matching LR(0) cores</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>Two LR(1) states may differ <strong>only by lookaheads</strong> but share the same <strong>core</strong> (prodIdx + dot positions). LALR(1) merges these into one state, <span class="good">unioning their lookahead sets</span>. This dramatically reduces state count while remaining valid for most grammars.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🔀 Merge Example</div>
+      <div style="display:grid;grid-template-columns:1fr auto 1fr;gap:8px;align-items:center;">
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">LR(1) State A</div>
+          <div class="lr-item">T → num <span class="dot">•</span> <span class="la">, $</span></div>
+        </div>
+        <div style="text-align:center;color:var(--green);font-size:18px;font-weight:800;">⊕<br/><span style="font-size:10px;color:var(--muted);">same core<br/>merge!</span></div>
+        <div>
+          <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">LR(1) State B</div>
+          <div class="lr-item">T → num <span class="dot">•</span> <span class="la">, +</span></div>
+        </div>
+      </div>
+      <div style="margin-top:10px;">
+        <div style="font-size:10px;color:var(--muted);margin-bottom:4px;">→ LALR State (merged)</div>
+        <div class="lr-item">T → num <span class="dot">•</span> <span class="la">, $ | +</span></div>
+      </div>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📉 Compression Result</div>
+      <div class="info-row">
+        <div class="info-item orange"><div class="i-label">LR(1) States</div><div class="i-val">~14</div></div>
+        <div style="display:flex;align-items:center;font-size:20px;color:var(--green);">→</div>
+        <div class="info-item green"><div class="i-label">LALR States</div><div class="i-val">~7</div></div>
+        <div style="display:flex;align-items:center;font-size:20px;color:var(--accent);">= </div>
+        <div class="info-item accent"><div class="i-label">50% smaller!</div><div class="i-val">✓</div></div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- ch3 -->
+
+<!-- ===================== CHAPTER 4: PARSE TABLE ===================== -->
+<div class="lesson-panel" id="chapter-4">
+
+  <div class="step-slide active" id="ch4-step-0">
+    <div class="section-header">
+      <div class="section-num" style="background:var(--red);">4</div>
+      <div><div class="section-h">Shift & Goto Table Population</div><div class="section-sub">lalrTransitions.forEach → ACTION and GOTO entries</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The code loops over every <strong>lalrTransition</strong> (from, symbol, to). If symbol is a <span class="warn">terminal</span> → it's a <strong>Shift</strong> → adds "S{to}" to actionTable[from][symbol]. If symbol is a <span class="warn">non-terminal</span> → it's a <strong>Goto</strong> → adds number to gotoTable[from][symbol].</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📊 Partial ACTION/GOTO Table — E→E+T|T, T→num|id</div>
+      <div style="overflow-x:auto;">
+        <table class="data-table" style="min-width:400px;">
+          <thead><tr><th>State</th><th>num</th><th>id</th><th>+</th><th>$</th><th>E</th><th>T</th></tr></thead>
+          <tbody>
+            <tr class="hl"><td>0</td><td style="color:var(--accent);">S3</td><td style="color:var(--accent);">S4</td><td></td><td></td><td style="color:var(--green);">1</td><td style="color:var(--green);">2</td></tr>
+            <tr><td>1</td><td></td><td></td><td style="color:var(--accent);">S5</td><td style="color:var(--green);font-weight:800;">acc</td><td></td><td></td></tr>
+            <tr><td>2</td><td></td><td></td><td style="color:var(--orange);">R2</td><td style="color:var(--orange);">R2</td><td></td><td></td></tr>
+            <tr><td>3</td><td></td><td></td><td style="color:var(--orange);">R3</td><td style="color:var(--orange);">R3</td><td></td><td></td></tr>
+            <tr><td>4</td><td></td><td></td><td style="color:var(--orange);">R4</td><td style="color:var(--orange);">R4</td><td></td><td></td></tr>
+            <tr><td>5</td><td style="color:var(--accent);">S3</td><td style="color:var(--accent);">S4</td><td></td><td></td><td></td><td style="color:var(--green);">6</td></tr>
+            <tr><td>6</td><td></td><td></td><td style="color:var(--orange);">R1</td><td style="color:var(--orange);">R1</td><td></td><td></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--accent);">S# = Shift to state #</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--orange);">R# = Reduce using prod #</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--green);">acc = Accept! ✓</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--purple);">Number = Goto next state</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch4-step-1">
+    <div class="teacher-bubble">
+      <p>Reduce entries come from items where the <strong>dot is at the end</strong> of a production. The code loops over every item in every LALR state. When dot == prod.rhs.length → <strong>reduce on this item's lookahead</strong>. Special case: if prodIdx == 0 (the augmented rule E'→E) and lookahead == '$' → <span class="good">Accept!</span></p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">⚡ Reduce Entry Logic — Step by Step</div>
+      <div class="condition-check">
+        <div class="cond-row check">For item "T → num •, $" : dot(1) == rhs.length(1) → dot at end → REDUCE</div>
+        <div class="cond-row true">✅ prodIdx ≠ 0 (not augmented rule) → add R{prod.originalIdx} = R3</div>
+        <div class="cond-row check">For item "E' → E •, $" : dot at end AND prodIdx==0 AND lookahead=='$'</div>
+        <div class="cond-row true" style="background:#dcfce7;font-size:13px;font-weight:800;">✅ → addAction(state, '$', 'acc') → ACCEPT!</div>
+      </div>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📊 Epsilon Production Special Case</div>
+      <div class="teacher-bubble" style="margin-bottom:0;">
+        <p>If a production is <strong>A → ε</strong>, the dot is conceptually "at the end" even at position 0. Code checks: <strong>isEpsilonProd = (rhs.length===1 && rhs[0]===EPSILON)</strong>. In this case, popCount = 0 — nothing is popped from the stack.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch4-step-2">
+    <div class="section-header" style="background:linear-gradient(135deg,#7f1d1d,#991b1b);">
+      <div class="section-num" style="background:var(--red);">⚠️</div>
+      <div><div class="section-h">The Ambiguity Police — addAction()</div><div class="section-sub">Detecting Shift-Reduce and Reduce-Reduce conflicts</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The <strong>addAction()</strong> helper checks before writing to the table. If a cell already has an entry and the new entry differs → <span class="warn">CONFLICT detected!</span> It categorizes it as <strong>Shift-Reduce</strong> (S vs R) or <strong>Reduce-Reduce</strong> (R vs R) and logs it to the conflicts array.</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🚨 Conflict Classification Logic</div>
+      <div style="background:#1e1e2e;border-radius:10px;padding:12px;font-family:'JetBrains Mono',monospace;font-size:11.5px;color:#cdd6f4;margin-bottom:10px;">
+        <div><span style="color:#cba6f7;">const</span> conflictType =</div>
+        <div>&nbsp;&nbsp;(existing.startsWith(<span style="color:#a6e3a1;">'S'</span>) && actionStr.startsWith(<span style="color:#a6e3a1;">'R'</span>)) ||</div>
+        <div>&nbsp;&nbsp;(existing.startsWith(<span style="color:#a6e3a1;">'R'</span>) && actionStr.startsWith(<span style="color:#a6e3a1;">'S'</span>))</div>
+        <div>&nbsp;&nbsp;? <span style="color:#a6e3a1;">'Shift-Reduce'</span> : <span style="color:#a6e3a1;">'Reduce-Reduce'</span>;</div>
+      </div>
+      <div class="conflict-box">
+        <div class="conflict-title">⚠️ Example: Dangling-else style Shift-Reduce Conflict</div>
+        <div class="conflict-row">State 5, symbol '+': existing="S5" vs new="R1"</div>
+        <div class="conflict-row">→ Shift-Reduce conflict! Both actions in same cell.</div>
+        <div class="conflict-row">→ Stored as "S5/R1" in table, logged to conflicts[]</div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- ch4 -->
+
+<!-- ===================== CHAPTER 5: AST & TAC ===================== -->
+<div class="lesson-panel" id="chapter-5">
+
+  <div class="step-slide active" id="ch5-step-0">
+    <div class="section-header">
+      <div class="section-num" style="background:var(--green);">5</div>
+      <div><div class="section-h">runParseSimulator() — LALR Trace</div><div class="section-sub">Executing the parser using ACTION/GOTO tables</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The simulator runs a <strong>loop</strong>: look at stack top state and current token, consult actionTable. If <strong>Shift</strong> → push new state and token. If <strong>Reduce</strong> → pop symbols, create parent AST node, consult gotoTable for next state. If <strong>acc</strong> → success!</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">📍 Parsing "num + num $" using our table</div>
+      <div style="border-radius:8px;overflow:hidden;border:1px solid var(--border);">
+        <div class="parse-step-row header"><div>#</div><div>Stack</div><div>Input</div><div>Action</div></div>
+        <div class="parse-step-row active"><div>1</div><div>[0]</div><div>num + num $</div><div class="action-s">S3</div></div>
+        <div class="parse-step-row"><div>2</div><div>[0,3]</div><div>+ num $</div><div class="action-r">R3 (T→num)</div></div>
+        <div class="parse-step-row"><div>3</div><div>[0,2]</div><div>+ num $</div><div class="action-r">R2 (E→T)</div></div>
+        <div class="parse-step-row"><div>4</div><div>[0,1]</div><div>+ num $</div><div class="action-s">S5 (+)</div></div>
+        <div class="parse-step-row"><div>5</div><div>[0,1,5]</div><div>num $</div><div class="action-s">S3</div></div>
+        <div class="parse-step-row"><div>6</div><div>[0,1,5,3]</div><div>$</div><div class="action-r">R3 (T→num)</div></div>
+        <div class="parse-step-row"><div>7</div><div>[0,1,5,6]</div><div>$</div><div class="action-r">R1 (E→E+T)</div></div>
+        <div class="parse-step-row" style="background:#f0fdf4;"><div>8</div><div>[0,1]</div><div>$</div><div class="action-acc">acc ✓</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch5-step-1">
+    <div class="section-header" style="background:linear-gradient(135deg,#1a1a2e,#16213e);">
+      <div class="section-num" style="background:var(--purple);">🌳</div>
+      <div><div class="section-h">AST Builder & Semantic Analysis</div><div class="section-sub">analyzeSemantics() — symbol table construction</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>During each <strong>Reduce</strong> step, the parser creates a <strong>tree node</strong>. Terminal tokens become leaf nodes; reductions create parent non-terminal nodes with their consumed symbols as children. The final <strong>nodeStack[0]</strong> is the complete parse tree root!</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🌲 Parse Tree for "num + num"</div>
+      <svg viewBox="0 0 300 160" style="width:100%;background:#f8faff;border-radius:8px;border:1px solid var(--border);">
+        <defs><marker id="ta" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#94a3b8"/></marker></defs>
+        <!-- E root -->
+        <rect x="120" y="10" width="60" height="26" rx="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="2"/>
+        <text x="150" y="27" font-family="JetBrains Mono" font-size="13" fill="#1d4ed8" text-anchor="middle" font-weight="700">E</text>
+        <!-- left E -->
+        <rect x="40" y="65" width="60" height="26" rx="6" fill="#dbeafe" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="70" y="82" font-family="JetBrains Mono" font-size="13" fill="#1d4ed8" text-anchor="middle" font-weight="700">E</text>
+        <!-- + -->
+        <rect x="120" y="65" width="60" height="26" rx="6" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+        <text x="150" y="82" font-family="JetBrains Mono" font-size="13" fill="#92400e" text-anchor="middle" font-weight="700">+</text>
+        <!-- right T -->
+        <rect x="200" y="65" width="60" height="26" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="1.5"/>
+        <text x="230" y="82" font-family="JetBrains Mono" font-size="13" fill="#065f46" text-anchor="middle" font-weight="700">T</text>
+        <!-- T under left E -->
+        <rect x="40" y="118" width="60" height="26" rx="6" fill="#d1fae5" stroke="#10b981" stroke-width="1.5"/>
+        <text x="70" y="135" font-family="JetBrains Mono" font-size="13" fill="#065f46" text-anchor="middle" font-weight="700">T</text>
+        <!-- Arrows -->
+        <line x1="130" y1="36" x2="90" y2="65" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ta)"/>
+        <line x1="150" y1="36" x2="150" y2="65" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ta)"/>
+        <line x1="170" y1="36" x2="210" y2="65" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ta)"/>
+        <line x1="70" y1="91" x2="70" y2="118" stroke="#94a3b8" stroke-width="1.5" marker-end="url(#ta)"/>
+        <!-- leaf labels -->
+        <text x="70" y="155" font-family="JetBrains Mono" font-size="10" fill="#10b981" text-anchor="middle">num</text>
+        <text x="230" y="102" font-family="JetBrains Mono" font-size="10" fill="#065f46" text-anchor="middle">↓ num</text>
+      </svg>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">🗂️ Symbol Table — analyzeSemantics() output</div>
+      <div style="border-radius:8px;overflow:hidden;border:1px solid var(--border);">
+        <div class="sym-row sym-header"><div>Name</div><div>Type</div><div>Scope</div><div>Init?</div><div>Offset</div></div>
+        <div class="sym-row"><div style="color:var(--accent);font-weight:700;">a</div><div>int</div><div>global</div><div style="color:var(--green);">✓</div><div>0</div></div>
+        <div class="sym-row"><div style="color:var(--accent);font-weight:700;">b</div><div>float</div><div>global</div><div style="color:var(--orange);">✗</div><div>4</div></div>
+        <div class="sym-row"><div style="color:var(--accent);font-weight:700;">sum</div><div>inferred</div><div>global</div><div style="color:var(--green);">✓</div><div>12</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="step-slide" id="ch5-step-2">
+    <div class="section-header" style="background:linear-gradient(135deg,#064e3b,#065f46);">
+      <div class="section-num" style="background:var(--green);">TAC</div>
+      <div><div class="section-h">generateTAC() — Three-Address Code</div><div class="section-sub">Post-order traversal emitting intermediate representation</div></div>
+    </div>
+    <div class="teacher-bubble">
+      <p>The TAC generator does <strong>post-order traversal</strong> — evaluate children first, then produce the parent instruction. Each binary operation becomes <strong>t_n = arg1 op arg2</strong>. Temporary variables (<strong>t1, t2, t3...</strong>) are auto-generated by <strong>newTemp()</strong>. This is the standard <span class="good">compiler intermediate representation</span>!</p>
+    </div>
+    <div class="visual-box">
+      <div class="visual-title">⚡ TAC Generation — "x = 5 + 3 * 2"</div>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:10px;">
+        <div style="font-size:10px;font-weight:800;color:var(--muted);margin-bottom:2px;">Post-order evaluation (deepest subtrees first):</div>
+        <div class="tac-instr"><span class="temp">t1</span> = <span class="var">3</span> <span class="op">*</span> <span class="var">2</span><span style="color:#585b70;font-size:10px;margin-left:8px;">← deepest operation first</span></div>
+        <div class="tac-instr"><span class="temp">t2</span> = <span class="var">5</span> <span class="op">+</span> <span class="temp">t1</span><span style="color:#585b70;font-size:10px;margin-left:8px;">← use t1 as operand</span></div>
+        <div class="tac-instr"><span class="var">x</span> = <span class="temp">t2</span><span style="color:#585b70;font-size:10px;margin-left:8px;">← final assignment</span></div>
+      </div>
+      <div class="condition-check">
+        <div class="cond-row check">Parentheses → emit(inner child) — brackets stripped automatically</div>
+        <div class="cond-row true">✅ Operator found in children → emit TAC instruction, return temp name</div>
+        <div class="cond-row true">✅ Assignment found → emit "dest = src", return dest name</div>
+        <div class="cond-row check">Fallback: if 1 meaningful child → pass its value up the tree</div>
+      </div>
+    </div>
+    <div class="result-box">
+      <div class="result-icon">🏆</div>
+      <div><div class="result-text">Complete pipeline: source → tokens → parse tree → symbol table → TAC</div></div>
+    </div>
+  </div>
+
+</div><!-- ch5 -->
+
+<!-- RIGHT CODE PANEL -->
+<div class="code-panel">
+  <div class="code-panel-header">
+    <div class="dot-red"></div><div class="dot-yellow"></div><div class="dot-green"></div>
+    <span style="margin-left:6px;" id="code-filename">grammarEngine.js</span>
+    <span id="code-fn-label" style="margin-left:auto;color:#a6e3a1;font-weight:700;font-size:11px;"></span>
+  </div>
+  <div class="code-scroll" id="code-display"></div>
+</div>
+
+</div><!-- main -->
+
+<div class="step-nav">
+  <button class="step-btn" onclick="prevStep()">← Prev</button>
+  <div class="step-indicator" id="step-dots"></div>
+  <span class="step-counter" id="step-counter">1 / 2</span>
+  <button class="step-btn primary" onclick="nextStep()">Next →</button>
+</div>
+
+<script>
+// ======================== CODE DEFINITIONS ========================
+const FILES = {
+  grammar: {
+    name: 'grammarEngine.js',
+    lines: [
+      {ln:1,  code:'<c>/** Grammar Core Engine</c>'},
+      {ln:2,  code:'<c> * Parses CFG, handles augmentation,</c>'},
+      {ln:3,  code:'<c> * computes Nullable, FIRST, FOLLOW. */</c>'},
+      {ln:4,  code:''},
+      {ln:5,  code:'<k>export const</k> <v>EPSILON</v> = <s>\'ε\'</s>;'},
+      {ln:6,  code:'<k>export const</k> <v>EOF</v> = <s>\'$\'</s>;'},
+      {ln:7,  code:''},
+      {ln:8,  code:'<k>export function</k> <fn>parseGrammar</fn>(text) {'},
+      {ln:9,  code:'  <k>const</k> <v>lines</v> = text.split(<s>\'\\n\'</s>)'},
+      {ln:10, code:'    .map(l => l.trim())'},
+      {ln:11, code:'    .filter(l => l.length > <n>0</n>);'},
+      {ln:12, code:'  <k>const</k> <v>productions</v> = [];'},
+      {ln:13, code:'  <k>const</k> <v>nonTerminals</v> = <k>new</k> Set();'},
+      {ln:14, code:'  <k>const</k> <v>terminals</v> = <k>new</k> Set();'},
+      {ln:15, code:''},
+      {ln:16, code:'  lines.<fn>forEach</fn>((line, lineIdx) => {'},
+      {ln:17, code:'    <k>const</k> <v>sep</v> = line.includes(<s>\'::=\'</s>)'},
+      {ln:18, code:'      ? <s>\'::=\'</s> : <s>\'->\'</s>;'},
+      {ln:19, code:'    <k>const</k> <v>parts</v> = line.split(sep);'},
+      {ln:20, code:'    <k>const</k> <v>lhs</v> = parts[<n>0</n>].trim();'},
+      {ln:21, code:'    nonTerminals.add(lhs);'},
+      {ln:22, code:''},
+      {ln:23, code:'    <k>const</k> <v>alternatives</v> = parts[<n>1</n>]'},
+      {ln:24, code:'      .split(<s>\'|\'</s>).map(a => a.trim());'},
+      {ln:25, code:'    alternatives.<fn>forEach</fn>(alt => {'},
+      {ln:26, code:'      <k>let</k> <v>rhs</v> = alt.split(<s>/\\s+/</s>)'},
+      {ln:27, code:'        .filter(s => s.length > <n>0</n>);'},
+      {ln:28, code:'      <k>if</k>(rhs.length === <n>0</n> || <c>/* epsilon */</c>'},
+      {ln:29, code:'        rhs[<n>0</n>] === EPSILON) {'},
+      {ln:30, code:'        rhs = [EPSILON];'},
+      {ln:31, code:'      }'},
+      {ln:32, code:'      productions.push({ lhs, rhs,'},
+      {ln:33, code:'        originalIdx: productions.length });'},
+      {ln:34, code:'    });'},
+      {ln:35, code:'  });'},
+      {ln:36, code:''},
+      {ln:37, code:'  <c>// Remove non-terminals from terminals</c>'},
+      {ln:38, code:'  nonTerminals.<fn>forEach</fn>(nt =>'},
+      {ln:39, code:'    terminals.delete(nt));'},
+      {ln:40, code:''},
+      {ln:41, code:'  <c>// Augment grammar: S\' -> S</c>'},
+      {ln:42, code:'  <k>const</k> <v>startSymbol</v> = productions[<n>0</n>].lhs;'},
+      {ln:43, code:'  <k>const</k> <v>augStart</v> = <s>`${startSymbol}\'`</s>;'},
+      {ln:44, code:'  nonTerminals.add(augStart);'},
+      {ln:45, code:'  <k>const</k> <v>augProds</v> = ['},
+      {ln:46, code:'    { lhs: augStart, rhs: [startSymbol],'},
+      {ln:47, code:'      originalIdx: <n>0</n> },'},
+      {ln:48, code:'    ...productions.map((p,i) =>'},
+      {ln:49, code:'      ({ ...p, originalIdx: i+<n>1</n> }))'},
+      {ln:50, code:'  ];'},
+      {ln:51, code:'  terminals.add(EOF);'},
+      {ln:52, code:'  <k>return</k> { productions: augProds,'},
+      {ln:53, code:'    nonTerminals, terminals, startSymbol };'},
+      {ln:54, code:'}'},
+      {ln:55, code:''},
+      {ln:56, code:'<k>export function</k> <fn>computeNullableFirstFollow</fn>('},
+      {ln:57, code:'    productions, nonTerminals, terminals) {'},
+      {ln:58, code:'  <k>const</k> <v>nullable</v> = <k>new</k> Set();'},
+      {ln:59, code:'  <k>const</k> <v>first</v> = <k>new</k> Map();'},
+      {ln:60, code:'  <k>const</k> <v>follow</v> = <k>new</k> Map();'},
+      {ln:61, code:''},
+      {ln:62, code:'  <c>// Fixed-point iteration</c>'},
+      {ln:63, code:'  <k>let</k> <v>changed</v> = <k>true</k>;'},
+      {ln:64, code:'  <k>while</k>(changed) {'},
+      {ln:65, code:'    changed = <k>false</k>;'},
+      {ln:66, code:'    <k>for</k>(<k>const</k> prod <k>of</k> productions) {'},
+      {ln:67, code:'      <k>const</k> { lhs, rhs } = prod;'},
+      {ln:68, code:'      <c>// Nullable check</c>'},
+      {ln:69, code:'      <k>if</k>(rhs[<n>0</n>] === EPSILON) {'},
+      {ln:70, code:'        nullable.add(lhs);'},
+      {ln:71, code:'        changed = <k>true</k>; <k>continue</k>;'},
+      {ln:72, code:'      }'},
+      {ln:73, code:'      <c>// FIRST computation</c>'},
+      {ln:74, code:'      <k>for</k>(<k>let</k> i=<n>0</n>; i&lt;rhs.length; i++) {'},
+      {ln:75, code:'        <k>const</k> <v>sym</v> = rhs[i];'},
+      {ln:76, code:'        <k>const</k> <v>sf</v> = first.get(sym) || new Set();'},
+      {ln:77, code:'        <k>for</k>(<k>const</k> v <k>of</k> sf) {'},
+      {ln:78, code:'          <k>if</k>(v !== EPSILON) lhsFirst.add(v);'},
+      {ln:79, code:'        }'},
+      {ln:80, code:'        <k>if</k>(!nullable.has(sym)) <k>break</k>;'},
+      {ln:81, code:'      }'},
+      {ln:82, code:'    }'},
+      {ln:83, code:'  }'},
+      {ln:84, code:''},
+      {ln:85, code:'  <c>// FOLLOW computation</c>'},
+      {ln:86, code:'  follow.get(startSym).add(EOF);'},
+      {ln:87, code:'  changed = <k>true</k>;'},
+      {ln:88, code:'  <k>while</k>(changed) {'},
+      {ln:89, code:'    changed = <k>false</k>;'},
+      {ln:90, code:'    <k>for</k>(<k>const</k> prod <k>of</k> productions) {'},
+      {ln:91, code:'      <k>for</k>(<k>let</k> i=<n>0</n>; i&lt;rhs.length; i++) {'},
+      {ln:92, code:'        <k>const</k> B = rhs[i];'},
+      {ln:93, code:'        <k>const</k> beta = rhs.slice(i+<n>1</n>);'},
+      {ln:94, code:'        <k>const</k> firstBeta = <fn>computeFirstOfSeq</fn>(beta);'},
+      {ln:95, code:'        <c>// Add FIRST(β)\\{ε} to FOLLOW(B)</c>'},
+      {ln:96, code:'        <k>if</k>(firstBeta.has(EPSILON)) {'},
+      {ln:97, code:'          <c>// Add FOLLOW(LHS) to FOLLOW(B)</c>'},
+      {ln:98, code:'        }'},
+      {ln:99, code:'      }'},
+      {ln:100,code:'    }'},
+      {ln:101,code:'  }'},
+      {ln:102,code:'  <k>return</k> { nullable, first, follow,'},
+      {ln:103,code:'    computeFirstOfSequence };'},
+      {ln:104,code:'}'},
+    ]
+  },
+  lalr: {
+    name: 'lalrEngine.js',
+    lines: [
+      {ln:1,  code:'<c>/** LALR(1) Engine</c>'},
+      {ln:2,  code:'<c> * Closure, GOTO, State Merging,</c>'},
+      {ln:3,  code:'<c> * ACTION/GOTO Table & Conflict Detection */</c>'},
+      {ln:4,  code:''},
+      {ln:5,  code:'<k>function</k> <fn>stringifyItem</fn>(prodIdx, dot, la) {'},
+      {ln:6,  code:'  <k>return</k> <s>`${prodIdx}_${dot}_${la}`</s>;'},
+      {ln:7,  code:'}'},
+      {ln:8,  code:''},
+      {ln:9,  code:'<k>function</k> <fn>parseItemKey</fn>(key) {'},
+      {ln:10, code:'  <k>const</k> parts = key.split(<s>\'_\'</s>);'},
+      {ln:11, code:'  <k>return</k> { prodIdx: parseInt(parts[<n>0</n>]),'},
+      {ln:12, code:'    dot: parseInt(parts[<n>1</n>]),'},
+      {ln:13, code:'    lookahead: parts[<n>2</n>] };'},
+      {ln:14, code:'}'},
+      {ln:15, code:''},
+      {ln:16, code:'<k>export function</k> <fn>buildLALRParser</fn>('},
+      {ln:17, code:'    productions, nonTerminals,'},
+      {ln:18, code:'    terminals, firstFollowData) {'},
+      {ln:19, code:''},
+      {ln:20, code:'  <c>// 1. LR(1) CLOSURE</c>'},
+      {ln:21, code:'  <k>function</k> <fn>computeClosureLR1</fn>(initial) {'},
+      {ln:22, code:'    <k>const</k> closure = <k>new</k> Set(initial);'},
+      {ln:23, code:'    <k>const</k> queue = Array.from(closure);'},
+      {ln:24, code:'    <k>let</k> head = <n>0</n>;'},
+      {ln:25, code:'    <k>while</k>(head &lt; queue.length) {'},
+      {ln:26, code:'      <k>const</k> key = queue[head++];'},
+      {ln:27, code:'      <k>const</k> {prodIdx,dot,lookahead}'},
+      {ln:28, code:'        = <fn>parseItemKey</fn>(key);'},
+      {ln:29, code:'      <k>const</k> prod = productions[prodIdx];'},
+      {ln:30, code:'      <k>if</k>(dot >= prod.rhs.length ||'},
+      {ln:31, code:'        prod.rhs[dot] === EPSILON) <k>continue</k>;'},
+      {ln:32, code:'      <k>const</k> symAtDot = prod.rhs[dot];'},
+      {ln:33, code:'      <k>if</k>(!nonTerminals.includes(symAtDot))'},
+      {ln:34, code:'        <k>continue</k>;'},
+      {ln:35, code:'      <c>// β = sequence after dot symbol</c>'},
+      {ln:36, code:'      <k>const</k> beta = prod.rhs.slice(dot+<n>1</n>);'},
+      {ln:37, code:'      <k>const</k> firstBetaA = <fn>computeFirstOfSeq</fn>('},
+      {ln:38, code:'        [...beta, lookahead]);'},
+      {ln:39, code:'      <k>for</k>(<k>let</k> pIdx=<n>0</n>; pIdx&lt;prods.length; pIdx++) {'},
+      {ln:40, code:'        <k>if</k>(prods[pIdx].lhs !== symAtDot) <k>continue</k>;'},
+      {ln:41, code:'        <k>for</k>(<k>const</k> la <k>of</k> firstBetaA) {'},
+      {ln:42, code:'          <k>if</k>(la === EPSILON) <k>continue</k>;'},
+      {ln:43, code:'          <k>const</k> newKey = <fn>stringifyItem</fn>(pIdx,<n>0</n>,la);'},
+      {ln:44, code:'          <k>if</k>(!closure.has(newKey)) {'},
+      {ln:45, code:'            closure.add(newKey);'},
+      {ln:46, code:'            queue.push(newKey);'},
+      {ln:47, code:'          }'},
+      {ln:48, code:'        }'},
+      {ln:49, code:'      }'},
+      {ln:50, code:'    }'},
+      {ln:51, code:'    <k>return</k> closure;'},
+      {ln:52, code:'  }'},
+      {ln:53, code:''},
+      {ln:54, code:'  <c>// 2. LR(1) GOTO</c>'},
+      {ln:55, code:'  <k>function</k> <fn>computeGotoLR1</fn>(items, symbol) {'},
+      {ln:56, code:'    <k>const</k> shifted = <k>new</k> Set();'},
+      {ln:57, code:'    <k>for</k>(<k>const</k> key <k>of</k> items) {'},
+      {ln:58, code:'      <k>const</k> {prodIdx,dot,lookahead}'},
+      {ln:59, code:'        = <fn>parseItemKey</fn>(key);'},
+      {ln:60, code:'      <k>const</k> prod = productions[prodIdx];'},
+      {ln:61, code:'      <k>if</k>(dot &lt; prod.rhs.length &&'},
+      {ln:62, code:'         prod.rhs[dot] === symbol) {'},
+      {ln:63, code:'        shifted.add(<fn>stringifyItem</fn>('},
+      {ln:64, code:'          prodIdx, dot+<n>1</n>, lookahead));'},
+      {ln:65, code:'      }'},
+      {ln:66, code:'    }'},
+      {ln:67, code:'    <k>if</k>(shifted.size === <n>0</n>) <k>return null</k>;'},
+      {ln:68, code:'    <k>return</k> <fn>computeClosureLR1</fn>(shifted);'},
+      {ln:69, code:'  }'},
+      {ln:70, code:''},
+      {ln:71, code:'  <c>// 3. BUILD LR(1) STATES</c>'},
+      {ln:72, code:'  <k>const</k> I0 = <fn>computeClosureLR1</fn>('},
+      {ln:73, code:'    <k>new</k> Set([<fn>stringifyItem</fn>(<n>0</n>,<n>0</n>,EOF)]));'},
+      {ln:74, code:'  <k>const</k> lr1States = [I0];'},
+      {ln:75, code:'  <k>const</k> lr1Transitions = [];'},
+      {ln:76, code:'  <k>let</k> qIdx = <n>0</n>;'},
+      {ln:77, code:'  <k>while</k>(qIdx &lt; lr1States.length &&'},
+      {ln:78, code:'    lr1States.length &lt; <n>500</n>) {'},
+      {ln:79, code:'    <k>const</k> cur = lr1States[qIdx];'},
+      {ln:80, code:'    <k>for</k>(<k>const</k> sym <k>of</k> allSymbols) {'},
+      {ln:81, code:'      <k>const</k> g = <fn>computeGotoLR1</fn>(cur, sym);'},
+      {ln:82, code:'      <k>if</k>(!g) <k>continue</k>;'},
+      {ln:83, code:'      <c>// find or create destination state</c>'},
+      {ln:84, code:'      lr1Transitions.push({from,sym,to});'},
+      {ln:85, code:'    }'},
+      {ln:86, code:'    qIdx++;'},
+      {ln:87, code:'  }'},
+      {ln:88, code:''},
+      {ln:89, code:'  <c>// 4. LALR CORE MERGING</c>'},
+      {ln:90, code:'  <k>function</k> <fn>extractCoreKey</fn>(items) {'},
+      {ln:91, code:'    <k>const</k> cores = <k>new</k> Set();'},
+      {ln:92, code:'    <k>for</k>(<k>const</k> key <k>of</k> items) {'},
+      {ln:93, code:'      <k>const</k> p = key.split(<s>\'_\'</s>);'},
+      {ln:94, code:'      cores.add(<s>`${p[0]}_${p[1]}`</s>);'},
+      {ln:95, code:'    }'},
+      {ln:96, code:'    <k>return</k> Array.from(cores).sort().join(<s>\'|\'</s>);'},
+      {ln:97, code:'  }'},
+      {ln:98, code:'  <k>const</k> coreMap = <k>new</k> Map();'},
+      {ln:99, code:'  lr1States.<fn>forEach</fn>((state, idx) => {'},
+      {ln:100,code:'    <k>const</k> ck = <fn>extractCoreKey</fn>(state);'},
+      {ln:101,code:'    <k>if</k>(!coreMap.has(ck)) coreMap.set(ck, []);'},
+      {ln:102,code:'    coreMap.get(ck).push(idx);'},
+      {ln:103,code:'  });'},
+      {ln:104,code:'  <k>const</k> lalrStates = [];'},
+      {ln:105,code:'  <k>const</k> lr1ToLALR = <k>new</k> Map();'},
+      {ln:106,code:'  coreMap.<fn>forEach</fn>((indices, ck) => {'},
+      {ln:107,code:'    <k>const</k> merged = <k>new</k> Set();'},
+      {ln:108,code:'    indices.<fn>forEach</fn>(origIdx => {'},
+      {ln:109,code:'      lr1ToLALR.set(origIdx, lalrStates.length);'},
+      {ln:110,code:'      <k>for</k>(<k>const</k> item <k>of</k> lr1States[origIdx])'},
+      {ln:111,code:'        merged.add(item); <c>// union lookaheads</c>'},
+      {ln:112,code:'    });'},
+      {ln:113,code:'    lalrStates.push({ items: merged });'},
+      {ln:114,code:'  });'},
+      {ln:115,code:''},
+      {ln:116,code:'  <c>// 5. ACTION/GOTO TABLE</c>'},
+      {ln:117,code:'  <k>const</k> actionTable = [], gotoTable = [];'},
+      {ln:118,code:'  <k>const</k> conflicts = [];'},
+      {ln:119,code:'  lalrStates.<fn>forEach</fn>(() => {'},
+      {ln:120,code:'    actionTable.push({}); gotoTable.push({});'},
+      {ln:121,code:'  });'},
+      {ln:122,code:''},
+      {ln:123,code:'  <k>const</k> <fn>addAction</fn> = (stateIdx, sym, act) => {'},
+      {ln:124,code:'    <k>const</k> row = actionTable[stateIdx];'},
+      {ln:125,code:'    <k>if</k>(row[sym] && row[sym] !== act) {'},
+      {ln:126,code:'      <c>// CONFLICT DETECTED!</c>'},
+      {ln:127,code:'      <k>const</k> type ='},
+      {ln:128,code:'        (row[sym][<n>0</n>]===<s>\'S\'</s> && act[<n>0</n>]===<s>\'R\'</s>) ||'},
+      {ln:129,code:'        (row[sym][<n>0</n>]===<s>\'R\'</s> && act[<n>0</n>]===<s>\'S\'</s>)'},
+      {ln:130,code:'        ? <s>\'Shift-Reduce\'</s> : <s>\'Reduce-Reduce\'</s>;'},
+      {ln:131,code:'      conflicts.push({stateIdx,sym,type});'},
+      {ln:132,code:'      row[sym] = <s>`${row[sym]}/${act}`</s>;'},
+      {ln:133,code:'    } <k>else</k> { row[sym] = act; }'},
+      {ln:134,code:'  };'},
+      {ln:135,code:''},
+      {ln:136,code:'  <c>// A. SHIFT and GOTO from transitions</c>'},
+      {ln:137,code:'  lalrTransitions.<fn>forEach</fn>(trans => {'},
+      {ln:138,code:'    <k>if</k>(terminals.includes(trans.symbol))'},
+      {ln:139,code:'      <fn>addAction</fn>(from, sym, <s>`S${to}`</s>);'},
+      {ln:140,code:'    <k>else</k> gotoTable[from][sym] = to;'},
+      {ln:141,code:'  });'},
+      {ln:142,code:''},
+      {ln:143,code:'  <c>// B. REDUCE and ACCEPT</c>'},
+      {ln:144,code:'  lalrStates.<fn>forEach</fn>((state, stateIdx) => {'},
+      {ln:145,code:'    <k>for</k>(<k>const</k> key <k>of</k> state.items) {'},
+      {ln:146,code:'      <k>const</k> {prodIdx,dot,lookahead}'},
+      {ln:147,code:'        = <fn>parseItemKey</fn>(key);'},
+      {ln:148,code:'      <k>const</k> prod = productions[prodIdx];'},
+      {ln:149,code:'      <k>const</k> atEnd = dot === prod.rhs.length'},
+      {ln:150,code:'        || <c>/* epsilon prod */</c>;'},
+      {ln:151,code:'      <k>if</k>(atEnd) {'},
+      {ln:152,code:'        <k>if</k>(prodIdx === <n>0</n> &&'},
+      {ln:153,code:'           lookahead === EOF)'},
+      {ln:154,code:'          <fn>addAction</fn>(stateIdx, EOF, <s>\'acc\'</s>);'},
+      {ln:155,code:'        <k>else</k>'},
+      {ln:156,code:'          <fn>addAction</fn>(stateIdx, lookahead,'},
+      {ln:157,code:'            <s>`R${prod.originalIdx}`</s>);'},
+      {ln:158,code:'      }'},
+      {ln:159,code:'    }'},
+      {ln:160,code:'  });'},
+      {ln:161,code:'  <k>return</k> { lalrStates, actionTable,'},
+      {ln:162,code:'    gotoTable, conflicts };'},
+      {ln:163,code:'}'},
+    ]
+  },
+  runtime: {
+    name: 'runtimeEngine.js',
+    lines: [
+      {ln:1,  code:'<c>/** Runtime Engine</c>'},
+      {ln:2,  code:'<c> * Lexer, Parser Simulator, Semantics,</c>'},
+      {ln:3,  code:'<c> * Symbol Table, TAC Generator */</c>'},
+      {ln:4,  code:''},
+      {ln:5,  code:'<k>export function</k> <fn>runLexer</fn>(code, terminals=[]) {'},
+      {ln:6,  code:'  <k>let</k> sanitized = code.replace('},
+      {ln:7,  code:'    <s>/\\/\\*[\\s\\S]*?\\*\\/|\\/\\/.*/g</s>, <s>\'\'</s>);'},
+      {ln:8,  code:'  <k>const</k> hasId = terminals.includes(<s>\'id\'</s>);'},
+      {ln:9,  code:'  <k>const</k> hasNum = terminals.includes(<s>\'num\'</s>);'},
+      {ln:10, code:'  <k>const</k> keywords = terminals.filter('},
+      {ln:11, code:'    t => <s>/^[a-zA-Z_]/</s>.test(t) &&'},
+      {ln:12, code:'    t!==<s>\'id\'</s> && t!==<s>\'num\'</s>);'},
+      {ln:13, code:'  <k>const</k> operators = terminals.filter('},
+      {ln:14, code:'    t => !<s>/^[a-zA-Z0-9_]+$/</s>.test(t));'},
+      {ln:15, code:'  <k>const</k> patterns = ['},
+      {ln:16, code:'    { type:<s>\'whitespace\'</s>, regex:<s>/^\\s+/</s> },'},
+      {ln:17, code:'    { type:<s>\'num\'</s>, regex:<s>/^[0-9]+(\\.[0-9]+)?\\b/</s> },'},
+      {ln:18, code:'    ...keywords.map(kw => ({'},
+      {ln:19, code:'      type: kw,'},
+      {ln:20, code:'      regex: <k>new</k> RegExp(<s>`^${kw}\\\\b`</s>)'}  ,
+      {ln:21, code:'    })),'},
+      {ln:22, code:'    { type:<s>\'id\'</s>, regex:<s>/^[a-zA-Z_][a-zA-Z0-9_]*/</s> },'},
+      {ln:23, code:'    ...operators.<fn>sort</fn>((a,b) => b.length-a.length)'},
+      {ln:24, code:'      .map(op => ({ type:op,'},
+      {ln:25, code:'        regex: <k>new</k> RegExp(<s>`^${escaped}`</s>) })),'},
+      {ln:26, code:'    { type:<s>\'char\'</s>, regex:<s>/^./</s> }'},
+      {ln:27, code:'  ];'},
+      {ln:28, code:'  <k>let</k> cursor=<n>0</n>, line=<n>1</n>;'},
+      {ln:29, code:'  <k>const</k> tokens = [];'},
+      {ln:30, code:'  <k>while</k>(cursor &lt; sanitized.length) {'},
+      {ln:31, code:'    <k>const</k> win = sanitized.substring(cursor);'},
+      {ln:32, code:'    <k>for</k>(<k>const</k> pat <k>of</k> patterns) {'},
+      {ln:33, code:'      <k>const</k> m = win.match(pat.regex);'},
+      {ln:34, code:'      <k>if</k>(m) {'},
+      {ln:35, code:'        <k>if</k>(pat.type===<s>\'whitespace\'</s>) {'},
+      {ln:36, code:'          line += (m[<n>0</n>].match(<s>/\\n/g</s>)||[]).length;'},
+      {ln:37, code:'        } <k>else</k> {'},
+      {ln:38, code:'          tokens.push({ lexeme:m[<n>0</n>],'},
+      {ln:39, code:'            type:resolvedType, line,'},
+      {ln:40, code:'            startIdx:cursor });'},
+      {ln:41, code:'        }'},
+      {ln:42, code:'        cursor += m[<n>0</n>].length;'},
+      {ln:43, code:'        <k>break</k>;'},
+      {ln:44, code:'      }'},
+      {ln:45, code:'    }'},
+      {ln:46, code:'  }'},
+      {ln:47, code:'  tokens.push({ lexeme:<s>\'$\'</s>, type:EOF });'},
+      {ln:48, code:'  <k>return</k> tokens;'},
+      {ln:49, code:'}'},
+      {ln:50, code:''},
+      {ln:51, code:'<k>export function</k> <fn>runParseSimulator</fn>('},
+      {ln:52, code:'    tokens, actionTable, gotoTable, prods) {'},
+      {ln:53, code:'  <k>const</k> stack = [<n>0</n>];'},
+      {ln:54, code:'  <k>const</k> nodeStack = [];'},
+      {ln:55, code:'  <k>let</k> ptr = <n>0</n>;'},
+      {ln:56, code:'  <k>while</k>(ptr &lt; tokens.length) {'},
+      {ln:57, code:'    <k>const</k> state = stack[stack.length-<n>1</n>];'},
+      {ln:58, code:'    <k>const</k> tok = tokens[ptr];'},
+      {ln:59, code:'    <k>const</k> act = actionTable[state][tok.type];'},
+      {ln:60, code:'    <k>if</k>(act === <s>\'acc\'</s>) { accept=<k>true</k>; <k>break</k>; }'},
+      {ln:61, code:'    <k>if</k>(act.startsWith(<s>\'S\'</s>)) { <c>// SHIFT</c>'},
+      {ln:62, code:'      stack.push(parseInt(act.slice(<n>1</n>)));'},
+      {ln:63, code:'      nodeStack.push(<fn>createNode</fn>(tok));'},
+      {ln:64, code:'      ptr++;'},
+      {ln:65, code:'    } <k>else if</k>(act.startsWith(<s>\'R\'</s>)) { <c>// REDUCE</c>'},
+      {ln:66, code:'      <k>const</k> prodIdx = parseInt(act.slice(<n>1</n>));'},
+      {ln:67, code:'      <k>const</k> prod = prods[prodIdx];'},
+      {ln:68, code:'      <k>const</k> children = [];'},
+      {ln:69, code:'      <k>for</k>(<k>let</k> i=<n>0</n>; i&lt;prod.rhs.length; i++) {'},
+      {ln:70, code:'        stack.pop();'},
+      {ln:71, code:'        children.unshift(nodeStack.pop());'},
+      {ln:72, code:'      }'},
+      {ln:73, code:'      <k>const</k> parent = <fn>createNode</fn>(prod.lhs,'},
+      {ln:74, code:'        <s>\'nonTerminal\'</s>, children);'},
+      {ln:75, code:'      nodeStack.push(parent);'},
+      {ln:76, code:'      <k>const</k> top = stack[stack.length-<n>1</n>];'},
+      {ln:77, code:'      stack.push(gotoTable[top][prod.lhs]);'},
+      {ln:78, code:'    }'},
+      {ln:79, code:'  }'},
+      {ln:80, code:'  <k>return</k> { accept, parseTreeRoot: nodeStack[<n>0</n>] };'},
+      {ln:81, code:'}'},
+      {ln:82, code:''},
+      {ln:83, code:'<k>export function</k> <fn>analyzeSemantics</fn>(root) {'},
+      {ln:84, code:'  <k>const</k> symbolTable = <k>new</k> Map();'},
+      {ln:85, code:'  <k>const</k> errors = [];'},
+      {ln:86, code:'  <k>const</k> <fn>traverse</fn> = (node) => {'},
+      {ln:87, code:'    <k>if</k>(!node) <k>return</k>;'},
+      {ln:88, code:'    <c>// Pattern: type keyword + id → declaration</c>'},
+      {ln:89, code:'    <k>const</k> typeKws = [<s>\'int\'</s>,<s>\'float\'</s>,<s>\'double\'</s>];'},
+      {ln:90, code:'    <k>let</k> typeFound=null, idFound=null;'},
+      {ln:91, code:'    <k>for</k>(<k>const</k> child <k>of</k> node.children) {'},
+      {ln:92, code:'      <k>if</k>(typeKws.includes(child.lexeme))'},
+      {ln:93, code:'        typeFound = child.lexeme;'},
+      {ln:94, code:'      <k>if</k>(child.name===<s>\'id\'</s>)'},
+      {ln:95, code:'        idFound = child.lexeme;'},
+      {ln:96, code:'    }'},
+      {ln:97, code:'    <k>if</k>(typeFound && idFound) {'},
+      {ln:98, code:'      <k>if</k>(symbolTable.has(idFound))'},
+      {ln:99, code:'        errors.push(<s>`Duplicate: ${idFound}`</s>);'},
+      {ln:100,code:'      <k>else</k> symbolTable.set(idFound,'},
+      {ln:101,code:'        { type:typeFound, offset });'},
+      {ln:102,code:'    }'},
+      {ln:103,code:'    node.children.<fn>forEach</fn>(traverse);'},
+      {ln:104,code:'  };'},
+      {ln:105,code:'  <fn>traverse</fn>(root);'},
+      {ln:106,code:'  <k>return</k> { symbolTable, errors };'},
+      {ln:107,code:'}'},
+      {ln:108,code:''},
+      {ln:109,code:'<k>export function</k> <fn>generateTAC</fn>(root) {'},
+      {ln:110,code:'  <k>let</k> tempCount = <n>1</n>;'},
+      {ln:111,code:'  <k>const</k> instrs = [];'},
+      {ln:112,code:'  <k>const</k> <fn>newTemp</fn> = () => <s>`t${tempCount++}`</s>;'},
+      {ln:113,code:'  <k>const</k> <fn>emit</fn> = (node) => {'},
+      {ln:114,code:'    <k>if</k>(!node || node.type===<s>\'epsilon\'</s>)'},
+      {ln:115,code:'      <k>return null</k>;'},
+      {ln:116,code:'    <k>if</k>(node.type===<s>\'terminal\'</s>)'},
+      {ln:117,code:'      <k>return</k> node.lexeme; <c>// leaf</c>'},
+      {ln:118,code:'    <k>const</k> childRes = node.children.map(<fn>emit</fn>);'},
+      {ln:119,code:'    <k>const</k> opIdx = node.children.<fn>findIndex</fn>('},
+      {ln:120,code:'      c => [<s>\'+\'</s>,<s>\'-\'</s>,<s>\'*\'</s>,<s>\'/\'</s>].includes(c.lexeme));'},
+      {ln:121,code:'    <k>if</k>(opIdx !== -<n>1</n> && childRes.length >= <n>3</n>) {'},
+      {ln:122,code:'      <k>const</k> L = childRes[opIdx-<n>1</n>];'},
+      {ln:123,code:'      <k>const</k> op = node.children[opIdx].lexeme;'},
+      {ln:124,code:'      <k>const</k> R = childRes[opIdx+<n>1</n>];'},
+      {ln:125,code:'      <k>const</k> tmp = <fn>newTemp</fn>();'},
+      {ln:126,code:'      instrs.push({ op,arg1:L,arg2:R,result:tmp,'},
+      {ln:127,code:'        str:<s>`${tmp}=${L}${op}${R}`</s> });'},
+      {ln:128,code:'      <k>return</k> tmp;'},
+      {ln:129,code:'    }'},
+      {ln:130,code:'    <k>const</k> assignIdx = node.children.<fn>findIndex</fn>('},
+      {ln:131,code:'      c => c.lexeme === <s>\'=\'</s>);'},
+      {ln:132,code:'    <k>if</k>(assignIdx !== -<n>1</n>) {'},
+      {ln:133,code:'      <k>const</k> dest = childRes[assignIdx-<n>1</n>];'},
+      {ln:134,code:'      <k>const</k> src = childRes[assignIdx+<n>1</n>];'},
+      {ln:135,code:'      instrs.push({ op:<s>\'=\'</s>,arg1:src,result:dest,'},
+      {ln:136,code:'        str:<s>`${dest}=${src}`</s> });'},
+      {ln:137,code:'      <k>return</k> dest;'},
+      {ln:138,code:'    }'},
+      {ln:139,code:'    <k>return</k> <k>null</k>;'},
+      {ln:140,code:'  };'},
+      {ln:141,code:'  <fn>emit</fn>(root);'},
+      {ln:142,code:'  <k>return</k> instrs;'},
+      {ln:143,code:'}'},
+    ]
+  }
+};
+
+// HIGHLIGHTS: chapter-step → [fileKey, [highlighted line numbers], label]
+const HIGHLIGHTS = {
+  // Chapter 0
+  'ch0-step-0': ['grammar', [1,2,3,5,6], 'Overview'],
+  'ch0-step-1': ['lalr', [5,6,7,8,9,10,11,12,13,14], 'stringifyItem / parseItemKey'],
+  // Chapter 1
+  'ch1-step-0': ['runtime', [5,6,7], 'runLexer() — sanitize'],
+  'ch1-step-1': ['runtime', [8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27], 'runLexer() — patterns'],
+  'ch1-step-2': ['runtime', [28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48], 'runLexer() — scan loop'],
+  // Chapter 2
+  'ch2-step-0': ['grammar', [8,9,10,11,16,17,18,19,20,21,23,24,25,26,27,28,29,30,31,32,33,34,35], 'parseGrammar()'],
+  'ch2-step-1': ['grammar', [37,38,39,41,42,43,44,45,46,47,48,49,50,51,52,53,54], 'Augmentation'],
+  'ch2-step-2': ['grammar', [56,57,58,59,60,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104], 'computeNullableFirstFollow()'],
+  // Chapter 3
+  'ch3-step-0': ['lalr', [20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52], 'computeClosureLR1()'],
+  'ch3-step-1': ['lalr', [54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87], 'computeGotoLR1() + State Building'],
+  'ch3-step-2': ['lalr', [89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114], 'extractCoreKey() — LALR Merge'],
+  // Chapter 4
+  'ch4-step-0': ['lalr', [116,117,118,119,120,121,136,137,138,139,140,141], 'Table Init + Shift/Goto'],
+  'ch4-step-1': ['lalr', [143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159,160], 'Reduce & Accept'],
+  'ch4-step-2': ['lalr', [123,124,125,126,127,128,129,130,131,132,133,134], 'addAction() — Conflict Detection'],
+  // Chapter 5
+  'ch5-step-0': ['runtime', [51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81], 'runParseSimulator()'],
+  'ch5-step-1': ['runtime', [83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100,101,102,103,104,105,106,107], 'analyzeSemantics()'],
+  'ch5-step-2': ['runtime', [109,110,111,112,113,114,115,116,117,118,119,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139,140,141,142,143], 'generateTAC()'],
+};
+
+const CHAPTER_STEPS = [2, 3, 3, 3, 3, 3];
+let currentChapter = 0;
+let currentStep = 0;
+
+function showChapter(ch) {
+  document.querySelectorAll('.lesson-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.chapter-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('chapter-' + ch).classList.add('active');
+  document.querySelectorAll('.chapter-tab')[ch].classList.add('active');
+  currentChapter = ch;
+  currentStep = 0;
+  showStep();
+}
+
+function showStep() {
+  const chId = 'ch' + currentChapter;
+  document.querySelectorAll(`[id^="${chId}-step-"]`).forEach(s => s.classList.remove('active'));
+  const stepEl = document.getElementById(`${chId}-step-${currentStep}`);
+  if (stepEl) stepEl.classList.add('active');
+
+  const total = CHAPTER_STEPS[currentChapter];
+  document.getElementById('step-counter').textContent = (currentStep + 1) + ' / ' + total;
+
+  const dotsEl = document.getElementById('step-dots');
+  dotsEl.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 's-dot' + (i < currentStep ? ' done' : '') + (i === currentStep ? ' active' : '');
+    d.onclick = () => { currentStep = i; showStep(); };
+    dotsEl.appendChild(d);
+  }
+
+  const key = `${chId}-step-${currentStep}`;
+  const [fileKey, hlLines, label] = HIGHLIGHTS[key] || ['grammar', [], ''];
+  renderCode(fileKey, hlLines, label);
+}
+
+function renderCode(fileKey, hlLines, label) {
+  const file = FILES[fileKey];
+  const container = document.getElementById('code-display');
+  document.getElementById('code-filename').textContent = file.name;
+  document.getElementById('code-fn-label').textContent = label;
+
+  container.innerHTML = file.lines.map(({ ln, code }) => {
+    const isHl = hlLines.includes(ln);
+    return `<div class="code-line ${isHl ? 'highlighted' : ''}" id="cl-${ln}">
+      <span class="ln">${ln}</span>
+      <span class="code">${code}</span>
+    </div>`;
+  }).join('');
+
+  if (hlLines.length > 0) {
+    const firstHl = document.getElementById('cl-' + hlLines[0]);
+    if (firstHl) setTimeout(() => firstHl.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
+  }
+}
+
+function nextStep() {
+  const total = CHAPTER_STEPS[currentChapter];
+  if (currentStep < total - 1) {
+    currentStep++;
+    showStep();
+  } else if (currentChapter < 5) {
+    showChapter(currentChapter + 1);
+  }
+}
+
+function prevStep() {
+  if (currentStep > 0) {
+    currentStep--;
+    showStep();
+  } else if (currentChapter > 0) {
+    const prevCh = currentChapter - 1;
+    currentChapter = prevCh;
+    currentStep = CHAPTER_STEPS[prevCh] - 1;
+    document.querySelectorAll('.lesson-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.chapter-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('chapter-' + prevCh).classList.add('active');
+    document.querySelectorAll('.chapter-tab')[prevCh].classList.add('active');
+    showStep();
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowDown') nextStep();
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') prevStep();
+});
+
+showStep();
+</script>
+</body>
+</html>
